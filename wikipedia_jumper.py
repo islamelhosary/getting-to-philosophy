@@ -35,8 +35,12 @@ class WikipediaJumper(object):
             table,a.new,a.external,i,#coordinates,infobox')
         self.all_hops = []
         self.DELAY_BETWEEN_REQUESTS = DELAY_BETWEEN_REQUESTS
+        # Initialize the cache
         requests_cache.install_cache(
-            'wikipedia-cache', backend='sqlite', expire_after=360)
+            'wikipedia-cache',
+            backend='sqlite',
+            expire_after=(360 * 60 * 60 * 24))
+
         if self.VERBOSE:
             logger.info(
                 "Initialized the jumper with \
@@ -104,10 +108,26 @@ class WikipediaJumper(object):
                 response = requests.get("{0}{1}".format(self.BASE_URL, page))
         else:
             response = requests.get("{0}{1}".format(self.BASE_URL, page))
+        # Wait only if there is a cache miss
+        IS_CACHED = False
+        if 'from_cache' not in response.__dict__.keys():
+            time.sleep(self.DELAY_BETWEEN_REQUESTS)
+            logger.debug(
+                'Cache disabled in Response with keys {r}'.format(
+                    r=response.__dict__.keys()))
+        elif not response.from_cache:
+            time.sleep(self.DELAY_BETWEEN_REQUESTS)
+            logger.debug(
+                'Cache miss for {res}'.format(res=response.url))
+        else:
+            IS_CACHED = True
+            logger.debug(
+                'Cache miss for {res}'.format(res=response.url))
 
         if self.VERBOSE:
-                logger.info("The Page {initial} resolved to {res}".format(
-                    initial=page, res=response.url))
+                logger.info("{cached}The Page {init} resolved to {res}".format(
+                    cached="__CACHED__:" if IS_CACHED else "",
+                    init=page, res=response.url))
 
         root_tree = lh.fromstring(response.content)
         main_content_list = root_tree.cssselect(self.MAIN_CONTENT_CLASS)
@@ -162,4 +182,3 @@ class WikipediaJumper(object):
                     "Yay\\0/, 42! Reached Philosophy in {hops} hops"
                     .format(hops=len(self.all_hops)))
                 break
-            time.sleep(self.DELAY_BETWEEN_REQUESTS)
